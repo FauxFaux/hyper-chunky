@@ -1,7 +1,6 @@
 use std::io::Write;
 use std::sync::Mutex;
 
-use failure::err_msg;
 use failure::Error;
 use futures::future::Future;
 use hyper::service::make_service_fn;
@@ -9,6 +8,17 @@ use hyper::service::service_fn;
 use hyper::Body;
 use hyper::Chunk;
 use hyper::Response;
+
+fn router(path: &str) -> Response<Body> {
+    let mut parts = path[1..].split('/');
+    if let Some(frag_count) = parts.next().and_then(|s| s.parse().ok()) {
+        if let Some(frag_size) = parts.next().and_then(|s| s.parse().ok()) {
+            return stream(frag_count, frag_size);
+        }
+    }
+
+    response(404, "usage: /count/size")
+}
 
 fn stream(frag_count: usize, frag_size: usize) -> Response<Body> {
     let mut parts = Vec::new();
@@ -24,8 +34,6 @@ fn main() -> Result<(), Error> {
 
     let mut args = std::env::args();
     let _ = args.next();
-    let frag_count: usize = args.next().ok_or(err_msg("1st arg: frag count"))?.parse()?;
-    let frag_size: usize = args.next().ok_or(err_msg("2nd arg: frag size"))?.parse()?;
 
     env_logger::Builder::new()
         .format(move |buf, record| {
@@ -54,13 +62,13 @@ fn main() -> Result<(), Error> {
 
     let server = hyper::Server::bind(&addr)
         .serve(make_service_fn(move |_| {
-            Ok::<_, hyper::Error>(service_fn(move |_req| {
-                Ok::<_, hyper::Error>(stream(frag_count, frag_size))
+            Ok::<_, hyper::Error>(service_fn(move |req| {
+                Ok::<_, hyper::Error>(router(req.uri().path()))
             }))
         }))
         .map_err(|e| eprintln!("server error: {}", e));
 
-    println!("listening on http://localhost:4432/");
+    println!("listening on http://localhost:4432/29/3");
 
     hyper::rt::run(server);
 

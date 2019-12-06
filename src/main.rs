@@ -11,13 +11,29 @@ use hyper::Response;
 
 fn router(path: &str) -> Response<Body> {
     let mut parts = path[1..].split('/');
-    if let Some(frag_count) = parts.next().and_then(|s| s.parse().ok()) {
-        if let Some(frag_size) = parts.next().and_then(|s| s.parse().ok()) {
-            return stream(frag_count, frag_size);
+
+    match parts.next() {
+        Some("chunked") => {
+            if let Some(frag_count) = parts.next().and_then(|s| s.parse().ok()) {
+                if let Some(frag_size) = parts.next().and_then(|s| s.parse().ok()) {
+                    return stream(frag_count, frag_size);
+                }
+            }
         }
+
+        Some("regular") => {
+            if let Some(total_size) = parts.next().and_then(|s| s.parse().ok()) {
+                return response(200, vec![b'a'; total_size]);
+            }
+        }
+
+        _ => (),
     }
 
-    response(404, "usage: /count/size")
+    response(
+        404,
+        "usage: /chunked/{count}/{size} or /regular/{total-size}",
+    )
 }
 
 fn stream(frag_count: usize, frag_size: usize) -> Response<Body> {
@@ -56,6 +72,7 @@ fn main() -> Result<(), Error> {
         .filter(Some("hyper::proto::h1::io"), log::LevelFilter::Debug)
         .filter(Some("tokio_reactor::registration"), log::LevelFilter::Debug)
         .filter(Some("hyper::proto::h1::conn"), log::LevelFilter::Debug)
+        //.filter(None, log::LevelFilter::Debug)
         .init();
 
     let addr = ([0, 0, 0, 0], 4432).into();
@@ -68,7 +85,7 @@ fn main() -> Result<(), Error> {
         }))
         .map_err(|e| eprintln!("server error: {}", e));
 
-    println!("listening on http://localhost:4432/29/3");
+    println!("listening on http://localhost:4432/");
 
     hyper::rt::run(server);
 
